@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+    --dark-mode: selector;
+    --animate-fade-in: fade-in 0.4s ease-out;
+    --animate-slide-up: slide-up 0.5s ease-out;
+    --animate-scale-in: scale-in 0.3s ease-out;
+
+    @keyframes fade-in {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes slide-up {
+        from {
+            transform: translateY(20px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes scale-in {
+        from {
+            transform: scale(0.95);
+            opacity: 0;
+        }
+
+        to {
+            transform: scale(1);
+            opacity: 1;
+        }
+    }
+}
+
+/* Forzada la activación del modo oscuro por clase .dark */
+@variant dark (&:where(.dark, .dark *));
+
+body {
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 transition-colors duration-300;
+    font-family: 'Inter', sans-serif;
+}
+
+/* Fallback manual por si Tailwind v4 tiene problemas de detección en la raíz */
+.dark body {
+    background-color: #020617;
+    color: #f8fafc;
+}
+
+/* Custom Animation Utilities */
+.animate-delay-100 {
+    animation-delay: 100ms;
+}
+
+.animate-delay-200 {
+    animation-delay: 200ms;
+}
+
+.animate-delay-300 {
+    animation-delay: 300ms;
+}
+
+.animate-fill-both {
+    animation-fill-mode: both;
+}

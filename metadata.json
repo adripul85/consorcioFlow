@@ -1,0 +1,8 @@
+
+{
+  "name": "ConsorcioFlow",
+  "description": "Un sistema integral de gestión de consorcios para administrar unidades, realizar el seguimiento de gastos mensuales y generar liquidaciones con inteligencia artificial.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
