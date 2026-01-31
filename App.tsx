@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Unit, Expense, View, Building, CalendarEvent, BankAccount, BankTransaction, CashAudit, Liquidation, Cheque } from './types';
+import { db } from './services/firebase';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import UnitManager from './components/UnitManager';
@@ -13,15 +15,14 @@ import CalendarView from './components/CalendarView';
 import NeighborPortal from './components/NeighborPortal';
 import BankBalanceManager from './components/BankBalanceManager';
 import ProviderPortal from './components/ProviderPortal';
-import { db } from './services/firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import ReceiptManager from './components/ReceiptManager';
+import PercentageManager from './components/PercentageManager';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('buildings');
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [activeBuildingId, setActiveBuildingId] = useState<string | null>(null);
   const [portalData, setPortalData] = useState<{ bid: string, m: number, y: number } | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('consorcio_dark_mode');
@@ -53,28 +54,51 @@ const App: React.FC = () => {
     localStorage.setItem('consorcio_dark_mode', darkMode.toString());
   }, [darkMode]);
 
+  // Sync with Firebase
   useEffect(() => {
-    // Escuchar cambios en tiempo real desde Firestore
-    const unsub = onSnapshot(doc(db, 'data', 'consorcio'), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const firebaseBuildings = data.buildings || [];
-
-        // Sincronizar estado local si es diferente
-        setBuildings(prev => {
-          if (JSON.stringify(prev) !== JSON.stringify(firebaseBuildings)) {
-            return firebaseBuildings;
+    const unsubscribe = onSnapshot(collection(db, 'buildings'), (snapshot) => {
+      const buildingsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Building));
+      if (buildingsData.length > 0) {
+        setBuildings(buildingsData);
+        if (!activeBuildingId) {
+          const lastActive = localStorage.getItem('consorcio_active_id');
+          if (lastActive && buildingsData.find(b => b.id === lastActive)) {
+            setActiveBuildingId(lastActive);
+          } else {
+            setActiveBuildingId(buildingsData[0].id);
           }
-          return prev;
-        });
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [activeBuildingId]);
 
-        const lastActive = localStorage.getItem('consorcio_active_id');
+  useEffect(() => {
+    const savedBuildings = localStorage.getItem('consorcio_buildings');
+    const lastActive = localStorage.getItem('consorcio_active_id');
+
+    if (savedBuildings) {
+      const parsed = JSON.parse(savedBuildings);
+      const migrated = parsed.map((b: any) => ({
+        ...b,
+        cheques: b.cheques || [],
+        bankTransactions: b.bankTransactions || [],
+        bankAccounts: b.bankAccounts || [],
+        cashAudits: b.cashAudits || [],
+        liquidations: b.liquidations || []
+      }));
+      // Only set buildings from localStorage if Firebase hasn't provided data yet
+      // This prevents overwriting Firebase data with potentially stale local storage data
+      if (buildings.length === 0) {
+        setBuildings(migrated);
         if (!portalData) {
           if (lastActive) setActiveBuildingId(lastActive);
-          else if (firebaseBuildings.length > 0) setActiveBuildingId(firebaseBuildings[0].id);
+          else if (migrated.length > 0) setActiveBuildingId(migrated[0].id);
         }
-      } else {
-        // Si no hay datos en Firebase, inicializar con el edificio por defecto
+      }
+    } else {
+      // Only initialize with default buildings if no data from Firebase or localStorage
+      if (buildings.length === 0) {
         const initialBuildings: Building[] = [{
           id: 'b1',
           name: 'Edificio Central',
@@ -96,27 +120,32 @@ const App: React.FC = () => {
         }];
         setBuildings(initialBuildings);
         if (!portalData) setActiveBuildingId('b1');
-        setDoc(doc(db, 'data', 'consorcio'), { buildings: initialBuildings });
       }
-      setLoading(false);
-    });
-
-    return () => unsub();
-  }, [portalData]);
+    }
+  }, [portalData, buildings.length]); // Added buildings.length to dependencies to re-evaluate if buildings are still empty
 
   useEffect(() => {
     if (buildings.length > 0) {
-      setDoc(doc(db, 'data', 'consorcio'), { buildings });
+      localStorage.setItem('consorcio_buildings', JSON.stringify(buildings));
     }
   }, [buildings]);
 
   const activeBuilding = buildings.find(b => b.id === activeBuildingId);
 
-  const updateActiveBuilding = (updater: (b: Building) => Building) => {
-    setBuildings(prev => prev.map(b => b.id === activeBuildingId ? updater(b) : b));
+  const updateActiveBuilding = async (updater: (b: Building) => Building) => {
+    const b = buildings.find(x => x.id === activeBuildingId);
+    if (!b) return;
+    const updated = updater(b);
+    try {
+      await setDoc(doc(db, 'buildings', activeBuildingId!), updated);
+    } catch (err) {
+      console.error("Firebase sync error:", err);
+      // Fallback local
+      setBuildings(prev => prev.map(x => x.id === activeBuildingId ? updated : x));
+    }
   };
 
-  const addBuilding = (b: Building) => {
+  const addBuilding = async (b: Building) => {
     const newBuilding = {
       ...b,
       liquidations: b.liquidations || [],
@@ -124,21 +153,41 @@ const App: React.FC = () => {
       bankAccounts: b.bankAccounts || [],
       bankTransactions: b.bankTransactions || []
     };
-    setBuildings([...buildings, newBuilding]);
-    setActiveBuildingId(b.id);
-    setView('dashboard');
+    try {
+      await setDoc(doc(db, 'buildings', b.id), newBuilding);
+      setActiveBuildingId(b.id);
+      setView('dashboard');
+    } catch (err) {
+      console.error("Error adding building:", err);
+      // Fallback local
+      setBuildings(prev => [...prev, newBuilding]);
+      setActiveBuildingId(b.id);
+      setView('dashboard');
+    }
   };
 
-  const updateBuilding = (updatedBuilding: Building) => {
-    setBuildings(prev => prev.map(b => b.id === updatedBuilding.id ? updatedBuilding : b));
+  const updateBuilding = async (updatedBuilding: Building) => {
+    try {
+      await setDoc(doc(db, 'buildings', updatedBuilding.id), updatedBuilding);
+    } catch (err) {
+      console.error("Error updating building:", err);
+      setBuildings(prev => prev.map(b => b.id === updatedBuilding.id ? updatedBuilding : b));
+    }
   };
 
-  const removeBuilding = (id: string) => {
-    const remaining = buildings.filter(b => b.id !== id);
-    setBuildings(remaining);
-    if (activeBuildingId === id) {
-      setActiveBuildingId(remaining.length > 0 ? remaining[0].id : null);
-      setView('buildings');
+  const removeBuilding = async (id: string) => {
+    if (window.confirm('¿Eliminar edificio definitivamente en la nube?')) {
+      try {
+        await deleteDoc(doc(db, 'buildings', id));
+        const remaining = buildings.filter(b => b.id !== id);
+        setBuildings(remaining);
+        if (activeBuildingId === id) {
+          setActiveBuildingId(remaining.length > 0 ? remaining[0].id : null);
+          setView('buildings');
+        }
+      } catch (err) {
+        console.error("Error removing building:", err);
+      }
     }
   };
 
@@ -168,7 +217,6 @@ const App: React.FC = () => {
   const addEvent = (event: CalendarEvent) => updateActiveBuilding(b => ({ ...b, events: [...(b.events || []), event] }));
   const removeEvent = (id: string) => updateActiveBuilding(b => ({ ...b, events: (b.events || []).filter(e => e.id !== id) }));
 
-  // Bank & Cheque Handlers
   const addBankAccount = (acc: BankAccount) => updateActiveBuilding(b => ({ ...b, bankAccounts: [...(b.bankAccounts || []), acc] }));
   const addBankTransaction = (tx: BankTransaction) => updateActiveBuilding(b => ({ ...b, bankTransactions: [...(b.bankTransactions || []), tx] }));
   const bulkAddBankTransactions = (txs: BankTransaction[]) => updateActiveBuilding(b => ({ ...b, bankTransactions: [...(b.bankTransactions || []), ...txs] }));
@@ -179,7 +227,6 @@ const App: React.FC = () => {
 
   const addCashAudit = (audit: CashAudit) => updateActiveBuilding(b => ({ ...b, cashAudits: [...(b.cashAudits || []), audit] }));
 
-  // Liquidations Handler
   const addLiquidation = (liq: Liquidation) => updateActiveBuilding(b => ({ ...b, liquidations: [...(b.liquidations || []), liq] }));
 
   const handlePreviewPortal = (m: number, y: number) => {
@@ -203,27 +250,18 @@ const App: React.FC = () => {
       case 'buildings': return 'Mis Edificios';
       case 'dashboard': return 'Resumen General';
       case 'calendar': return 'Agenda del Consorcio';
-      case 'units': return 'Unidades';
+      case 'units': return 'Gestión de Porcentajes';
+      case 'percentages': return 'Estado de Cuentas y Prorrateo';
       case 'expenses': return 'Egresos / Gastos';
       case 'income': return 'Libro de Ingresos';
       case 'settlements': return 'Liquidaciones';
+      case 'receipts': return 'Recibos de Pago';
       case 'ai-helper': return 'Asistente IA';
       case 'bank-balance': return 'Balance Bancario';
       case 'provider-portal': return 'Terminal de Proveedores';
       default: return 'Panel';
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-500 font-medium">Cargando ConsorcioFlow...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
@@ -235,10 +273,7 @@ const App: React.FC = () => {
         toggleDarkMode={() => setDarkMode(!darkMode)}
       />
 
-      <main
-        key={view}
-        className="flex-1 overflow-y-auto h-screen p-8 animate-fade-in"
-      >
+      <main className="flex-1 overflow-y-auto h-screen p-8">
         <header className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">
@@ -258,101 +293,117 @@ const App: React.FC = () => {
         </header>
 
         <div className="max-w-6xl mx-auto pb-20">
-          {view === 'buildings' && (
-            <BuildingManager
-              buildings={buildings}
-              activeBuildingId={activeBuildingId}
-              onSelect={(id) => { setActiveBuildingId(id); setView('dashboard'); }}
-              onAdd={addBuilding}
-              onUpdate={updateBuilding}
-              onRemove={removeBuilding}
-            />
-          )}
+          <div key={view} className="animate-fade-in animate-slide-up">
+            {view === 'buildings' && (
+              <BuildingManager
+                buildings={buildings}
+                activeBuildingId={activeBuildingId}
+                onSelect={(id) => { setActiveBuildingId(id); setView('dashboard'); }}
+                onAdd={addBuilding}
+                onUpdate={updateBuilding}
+                onRemove={removeBuilding}
+              />
+            )}
 
-          {view === 'provider-portal' && (
-            <ProviderPortal buildings={buildings} onAddExpense={addExpenseToBuilding} />
-          )}
+            {view === 'provider-portal' && (
+              <ProviderPortal buildings={buildings} onAddExpense={addExpenseToBuilding} />
+            )}
 
-          {!activeBuilding && view !== 'buildings' && view !== 'provider-portal' ? (
-            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="text-6xl mb-4">⚠️</div>
-              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">No hay edificio seleccionado</h3>
-              <p className="text-slate-500 dark:text-slate-400 mt-2 mb-6">Debes seleccionar o crear un edificio antes de gestionar sus datos.</p>
-              <button onClick={() => setView('buildings')} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-100">Ir a Mis Edificios</button>
-            </div>
-          ) : (
-            <>
-              {view === 'dashboard' && activeBuilding && (
-                <Dashboard units={activeBuilding.units} expenses={activeBuilding.expenses} />
-              )}
-              {view === 'calendar' && activeBuilding && (
-                <CalendarView
-                  events={activeBuilding.events || []}
-                  expenses={activeBuilding.expenses || []}
-                  onAddEvent={addEvent}
-                  onRemoveEvent={removeEvent}
-                />
-              )}
-              {view === 'units' && activeBuilding && (
-                <UnitManager
-                  units={activeBuilding.units}
-                  onAdd={addUnit}
-                  onRemove={removeUnit}
-                  onUpdate={updateUnit}
-                />
-              )}
-              {view === 'expenses' && activeBuilding && (
-                <ExpenseManager
-                  expenses={activeBuilding.expenses}
-                  onAdd={addExpense}
-                  onRemove={removeExpense}
-                  onUpdate={updateExpense}
-                  onBulkUpdate={bulkUpdateExpenses}
-                  categories={activeBuilding.categories}
-                  onUpdateCategories={handleUpdateCategories}
-                />
-              )}
-              {view === 'income' && activeBuilding && (
-                <IncomeManager
-                  units={activeBuilding.units}
-                  onUpdateUnit={updateUnit}
-                  buildingName={activeBuilding.name}
-                  buildingAddress={activeBuilding.address}
-                />
-              )}
-              {view === 'settlements' && activeBuilding && (
-                <SettlementView
-                  buildingId={activeBuilding.id}
-                  units={activeBuilding.units}
-                  expenses={activeBuilding.expenses}
-                  liquidations={activeBuilding.liquidations || []}
-                  buildingName={activeBuilding.name}
-                  buildingAddress={activeBuilding.address}
-                  onPreviewPortal={handlePreviewPortal}
-                  onAddLiquidation={addLiquidation}
-                />
-              )}
-              {view === 'ai-helper' && activeBuilding && (
-                <AIHelper units={activeBuilding.units} expenses={activeBuilding.expenses} />
-              )}
-              {view === 'bank-balance' && activeBuilding && (
-                <BankBalanceManager
-                  buildingName={activeBuilding.name}
-                  accounts={activeBuilding.bankAccounts || []}
-                  transactions={activeBuilding.bankTransactions || []}
-                  cheques={activeBuilding.cheques || []}
-                  audits={activeBuilding.cashAudits || []}
-                  onAddAccount={addBankAccount}
-                  onAddTransaction={addBankTransaction}
-                  onBulkAddTransactions={bulkAddBankTransactions}
-                  onAddCheque={addCheque}
-                  onUpdateCheque={updateCheque}
-                  onRemoveCheque={removeCheque}
-                  onAddAudit={addCashAudit}
-                />
-              )}
-            </>
-          )}
+            {!activeBuilding && view !== 'buildings' && view !== 'provider-portal' ? (
+              <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="text-6xl mb-4">⚠️</div>
+                <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">No hay edificio seleccionado</h3>
+                <p className="text-slate-500 dark:text-slate-400 mt-2 mb-6">Debes seleccionar o crear un edificio antes de gestionar sus datos.</p>
+                <button onClick={() => setView('buildings')} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-100">Ir a Mis Edificios</button>
+              </div>
+            ) : (
+              <>
+                {view === 'dashboard' && activeBuilding && (
+                  <Dashboard units={activeBuilding.units} expenses={activeBuilding.expenses} />
+                )}
+                {view === 'calendar' && activeBuilding && (
+                  <CalendarView
+                    events={activeBuilding.events || []}
+                    expenses={activeBuilding.expenses || []}
+                    onAddEvent={addEvent}
+                    onRemoveEvent={removeEvent}
+                  />
+                )}
+                {view === 'units' && activeBuilding && (
+                  <UnitManager
+                    units={activeBuilding.units}
+                    expenses={activeBuilding.expenses}
+                    onAdd={addUnit}
+                    onRemove={removeUnit}
+                    onUpdate={updateUnit}
+                  />
+                )}
+                {view === 'percentages' && activeBuilding && (
+                  <PercentageManager
+                    units={activeBuilding.units}
+                    expenses={activeBuilding.expenses}
+                    onUpdateUnit={updateUnit}
+                    onAddUnit={addUnit}
+                  />
+                )}
+                {view === 'expenses' && activeBuilding && (
+                  <ExpenseManager
+                    expenses={activeBuilding.expenses}
+                    onAdd={addExpense}
+                    onRemove={removeExpense}
+                    onUpdate={updateExpense}
+                    onBulkUpdate={bulkUpdateExpenses}
+                    categories={activeBuilding.categories}
+                    onUpdateCategories={handleUpdateCategories}
+                  />
+                )}
+                {view === 'income' && activeBuilding && (
+                  <IncomeManager
+                    units={activeBuilding.units}
+                    onUpdateUnit={updateUnit}
+                    buildingName={activeBuilding.name}
+                    buildingAddress={activeBuilding.address}
+                  />
+                )}
+                {view === 'settlements' && activeBuilding && (
+                  <SettlementView
+                    buildingId={activeBuilding.id}
+                    units={activeBuilding.units}
+                    expenses={activeBuilding.expenses}
+                    liquidations={activeBuilding.liquidations || []}
+                    buildingName={activeBuilding.name}
+                    buildingAddress={activeBuilding.address}
+                    onPreviewPortal={handlePreviewPortal}
+                    onAddLiquidation={addLiquidation}
+                  />
+                )}
+                {view === 'receipts' && activeBuilding && (
+                  <ReceiptManager
+                    building={activeBuilding}
+                  />
+                )}
+                {view === 'ai-helper' && activeBuilding && (
+                  <AIHelper units={activeBuilding.units} expenses={activeBuilding.expenses} />
+                )}
+                {view === 'bank-balance' && activeBuilding && (
+                  <BankBalanceManager
+                    buildingName={activeBuilding.name}
+                    accounts={activeBuilding.bankAccounts || []}
+                    transactions={activeBuilding.bankTransactions || []}
+                    cheques={activeBuilding.cheques || []}
+                    audits={activeBuilding.cashAudits || []}
+                    onAddAccount={addBankAccount}
+                    onAddTransaction={addBankTransaction}
+                    onBulkAddTransactions={bulkAddBankTransactions}
+                    onAddCheque={addCheque}
+                    onUpdateCheque={updateCheque}
+                    onRemoveCheque={removeCheque}
+                    onAddAudit={addCashAudit}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
       </main>
     </div>

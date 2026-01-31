@@ -8,29 +8,7 @@ interface DashboardProps {
   expenses: Expense[];
 }
 
-export const formatMoney = (amount: number) => {
-  return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-/**
- * Toma un string (input crudo) y lo convierte al formato 0,000.00 en vivo
- */
-export const handleAccountingInput = (value: string): string => {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "0.00";
-  const cents = parseInt(digits);
-  return (cents / 100).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-};
-
-/**
- * Convierte el string formateado (con comas) de vuelta a un número puro
- */
-export const parseAccountingValue = (formattedValue: string): number => {
-  return parseFloat(formattedValue.replace(/,/g, '')) || 0;
-};
+import { formatMoney, handleAccountingInput, parseAccountingValue } from '../services/accountingUtils';
 
 export const getCategoryIcon = (category: string) => {
   const cat = category.toLowerCase();
@@ -105,7 +83,7 @@ const Dashboard: React.FC<DashboardProps> = ({ units, expenses }) => {
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#0ea5e9', '#f43f5e'];
 
   return (
-    <div className="space-y-8 animate-slide-up">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white text-lg shadow-lg shadow-indigo-100 dark:shadow-none">📅</div>
@@ -165,10 +143,10 @@ const Dashboard: React.FC<DashboardProps> = ({ units, expenses }) => {
           <p className="text-[10px] text-slate-400 mt-3 font-bold uppercase tracking-widest">Gasto base por unidad</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
-          <p className="text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Participación</p>
-          <h3 className="text-3xl font-black text-slate-800 dark:text-slate-100">{(totalCoef * 100).toFixed(1)}%</h3>
-          <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-3 font-bold uppercase tracking-widest">Coeficiente Total</p>
+        <div className="bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-800">
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Participación</p>
+          <h3 className="text-3xl font-black text-white">{(totalCoef * 100).toFixed(1)}%</h3>
+          <p className="text-[10px] text-indigo-400 mt-3 font-bold uppercase tracking-widest">Coeficiente Total</p>
         </div>
       </div>
 
@@ -181,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ units, expenses }) => {
             </div>
           </div>
 
-          <div className="h-80">
+          <div className="h-[350px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoryData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.1} />

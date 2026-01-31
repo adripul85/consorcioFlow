@@ -2,7 +2,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Expense } from '../types';
 import { exportToCSV, exportToExcel, parseFile } from '../services/dataService';
-import { getCategoryIcon, formatMoney, handleAccountingInput, parseAccountingValue } from './Dashboard';
+import { getCategoryIcon } from './Dashboard';
+import { formatMoney, handleAccountingInput, parseAccountingValue } from '../services/accountingUtils';
 
 interface ExpenseManagerProps {
   expenses: Expense[];
@@ -89,7 +90,8 @@ const ExpenseManager: React.FC<ExpenseManagerProps> = ({
     if (filterStatus === 'to_approve') {
       result = result.filter(e => e.status === 'pending');
     } else {
-      // Excluir pendientes si no estamos en 'para aprobar'
+      // Fix: Removed redundant comparison 'filterStatus === "to_approve"' which caused a TS error due to type narrowing.
+      // Since we are in the 'else' block, filterStatus is already narrowed to not be 'to_approve'.
       result = result.filter(e => e.status !== 'pending');
 
       if (filterStatus === 'pending') result = result.filter(e => !e.paid);
@@ -280,7 +282,7 @@ const ExpenseManager: React.FC<ExpenseManagerProps> = ({
       {pendingApprovalCount > 0 && filterStatus !== 'to_approve' && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-800 p-6 rounded-3xl flex items-center justify-between animate-bounce-short">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/40 rounded-2xl flex items-center justify-center text-amber-600 dark:text-amber-400 text-2xl shadow-lg">📥</div>
+            <div className="w-12 h-12 bg-amber-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg">📥</div>
             <div>
               <h4 className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Revisión de Proveedores</h4>
               <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Tienes {pendingApprovalCount} gastos pendientes de validación.</p>
@@ -432,7 +434,7 @@ const ExpenseManager: React.FC<ExpenseManagerProps> = ({
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
-              className={`flex-1 md:flex-none px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${filterStatus === status ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-100 dark:border-slate-700' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+              className={`flex-1 md:flex-none px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${filterStatus === status ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
             >
               {status === 'all' ? `Oficiales` : status === 'pending' ? `Pendientes Pago` : status === 'paid' ? `Pagados` : `Por Aprobar (${pendingApprovalCount})`}
             </button>

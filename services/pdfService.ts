@@ -1,234 +1,193 @@
-
 import { jsPDF } from 'jspdf';
-import QRCode from 'qrcode';
 
-const pdfFormatMoney = (amount: number) => {
-  return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatArCurrency = (amount: number) => {
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(amount);
 };
 
-interface ReceiptData {
-  buildingName: string;
-  buildingAddress: string;
-  paymentId: string;
-  date: string;
-  amount: number;
-  owner: string;
-  unit: string;
-}
+export const generateSettlementPdf = async (data: any) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  let y = 10;
+  const pageWidth = 210;
+  const margin = 10;
 
-interface SettlementPdfData {
-  buildingId: string;
-  buildingName: string;
-  buildingAddress: string;
-  month: string;
-  monthIdx: number;
-  year: number;
-  totalExpenses: number;
-  expenses: any[];
-  units: any[];
-}
+  const drawHeader = () => {
+    doc.setFillColor(189, 215, 238);
+    doc.rect(margin + 60, 10, 80, 15, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('MIS EXPENSAS', 105, 17, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`Liquidación de mes: ${data.month.toUpperCase()} ${data.year}`, 105, 23, { align: 'center' });
 
-export const generatePaymentReceipt = async (data: ReceiptData) => {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+    doc.setFontSize(8);
+    doc.setFillColor(242, 242, 242);
+    doc.rect(margin, 28, 90, 25, 'F');
+    doc.text('ADMINISTRACIÓN', margin + 2, 32);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Nombre: ADMINISTRACION FARZATI`, margin + 2, 37);
+    doc.text(`CUIT: 27-05266581-2 | RPA: 16082`, margin + 2, 41);
+    doc.text(`San Carlos 5580 piso 4º 26`, margin + 2, 45);
+    doc.text(`Mail: dianoefar@hotmail.com`, margin + 2, 49);
 
-  const qrContent = `https://consorcioflow.app/verify/payment/${data.paymentId}`;
-  const qrDataUrl = await QRCode.toDataURL(qrContent, { margin: 1, width: 100 });
+    doc.setFillColor(242, 242, 242);
+    doc.rect(pageWidth - margin - 90, 28, 90, 25, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.text('CONSORCIO', pageWidth - margin - 88, 32);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Nombre: ${data.buildingName}`, pageWidth - margin - 88, 37);
+    doc.text(`Dirección: ${data.buildingAddress}`, pageWidth - margin - 88, 41);
+    doc.text(`CUIT: 30-55950114-6`, pageWidth - margin - 88, 45);
+    y = 60;
+  };
 
-  const primaryColor = '#4f46e5'; 
-  const secondaryColor = '#1e293b';
-  const lightGray = '#f8fafc';
+  const drawRubroHeader = (title: string) => {
+    if (y > 265) { doc.addPage(); y = 15; }
+    doc.setFillColor(189, 215, 238);
+    doc.rect(margin, y, pageWidth - (margin * 2), 6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text(title, margin + 2, y + 4.5);
+    y += 10;
+  };
 
-  doc.setFillColor(lightGray);
-  doc.rect(0, 0, 210, 60, 'F');
+  const drawSubRubro = (title: string, items: any[], totalRubroLabel: string) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text(title, margin, y - 2);
+    doc.text('EXPENSA', pageWidth - margin - 40, y - 2, { align: 'right' });
+    doc.text('TOTAL', pageWidth - margin - 2, y - 2, { align: 'right' });
+    doc.line(margin, y - 1, pageWidth - margin, y - 1);
+    
+    let subtotal = 0;
+    doc.setFont('helvetica', 'normal');
+    if (items.length === 0) {
+      doc.text('SIN MOVIMIENTOS', margin + 2, y + 3);
+      y += 8;
+    } else {
+      items.forEach(item => {
+        if (y > 280) { doc.addPage(); y = 15; }
+        doc.text(item.description.substring(0, 85).toUpperCase(), margin + 2, y);
+        doc.text(formatArCurrency(item.amount), pageWidth - margin - 2, y, { align: 'right' });
+        subtotal += item.amount;
+        y += 4;
+      });
+    }
+
+    doc.setFillColor(242, 242, 242);
+    doc.rect(margin, y, pageWidth - (margin * 2), 5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.text(totalRubroLabel, margin + 2, y + 3.5);
+    doc.text(`$ ${formatArCurrency(subtotal)}`, pageWidth - margin - 2, y + 3.5, { align: 'right' });
+    y += 10;
+    return subtotal;
+  };
+
+  // --- INICIO GENERACIÓN ---
+  drawHeader();
+
+  // Rubro 1
+  drawRubroHeader("REMUNERACIONES AL PERSONAL Y CARGAS SOCIALES");
+  const r1a = data.expenses.filter((e: any) => /sueldo|basico|antiguedad|vacaciones|aguinaldo/i.test(e.description));
+  const r1b = data.expenses.filter((e: any) => /afip|931|fateryh|suterh|cargas social|seracarh/i.test(e.description));
+  drawSubRubro("1a DETALLE DE SUELDO", r1a, "TOTAL 1a");
+  drawSubRubro("1b APORTES Y CARGAS SOCIALES", r1b, "TOTAL RUBRO 1");
+
+  // Sección Servicios y Abonos
+  drawRubroHeader("PAGOS DEL PERÍODO POR SUMINISTROS, SERVICIOS, ABONOS Y SEGURO");
   
-  doc.setTextColor(primaryColor);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
-  doc.text('ConsorcioFlow', 20, 25);
-  
-  doc.setFontSize(10);
-  doc.setTextColor(secondaryColor);
-  doc.setFont('helvetica', 'normal');
-  doc.text('GESTIÓN INTELIGENTE DE CONSORCIOS', 20, 32);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(data.buildingName.toUpperCase(), 190, 25, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(data.buildingAddress, 190, 30, { align: 'right' });
-  doc.text(`ID Comprobante: #${data.paymentId.toUpperCase()}`, 190, 35, { align: 'right' });
-
-  doc.setDrawColor(primaryColor);
-  doc.setLineWidth(1);
-  doc.line(20, 50, 190, 50);
-  
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('RECIBO DE PAGO', 105, 75, { align: 'center' });
-
-  doc.setFillColor(lightGray);
-  doc.roundedRect(20, 85, 170, 100, 3, 3, 'F');
-
-  doc.setFontSize(11);
-  doc.setTextColor(secondaryColor);
-  
-  const startY = 100;
-  const lineSpacing = 12;
-
-  const fields = [
-    { label: 'FECHA DE COBRO:', value: data.date },
-    { label: 'UNIDAD FUNCIONAL:', value: data.unit },
-    { label: 'PROPIETARIO:', value: data.owner },
+  const groups = [
+    { n: "2 SERVICIOS PÚBLICOS", k: /luz|gas|agua|aysa|edesur|edenor|metrogas/i },
+    { n: "3 ABONOS DE SERVICIOS", k: /abono|fumigacion|ascensor|mantenimiento abono/i },
+    { n: "4 MANTENIMIENTO DE PARTES COMUNES", k: /reparacion|arreglo|materiales|ferreteria/i },
+    { n: "6 GASTOS BANCARIOS", k: /comision|banco|impuesto ley|cheque/i },
+    { n: "7 GASTOS DE LIMPIEZA", k: /limpieza|insumos|articulos/i },
+    { n: "8 GASTOS DE ADMINISTRACION", k: /honorarios|copias|papeleria|gastos admin/i },
+    { n: "9 PAGOS DEL PERÍODO POR SEGUROS", k: /seguro|poliza|mapfre|federacion/i },
+    { n: "10 OTROS", k: /otros|varios/i }
   ];
 
-  fields.forEach((field, i) => {
-    doc.setFont('helvetica', 'bold');
-    doc.text(field.label, 30, startY + (i * lineSpacing));
-    doc.setFont('helvetica', 'normal');
-    doc.text(field.value, 80, startY + (i * lineSpacing));
+  groups.forEach(g => {
+    const items = data.expenses.filter((e: any) => g.k.test(e.description) || e.category.toLowerCase().includes(g.n.split(' ')[1].toLowerCase()));
+    drawSubRubro(g.n, items, `TOTAL ${g.n}`);
   });
 
-  doc.setDrawColor('#e2e8f0');
-  doc.line(30, 140, 180, 140);
-  
-  doc.setFontSize(14);
+  // --- ESTADO FINANCIERO ---
+  doc.addPage(); y = 15;
+  doc.setFillColor(189, 215, 238);
+  doc.rect(margin, y, pageWidth - (margin * 2), 7, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL RECAUDADO:', 30, 155);
+  doc.text('ESTADO FINANCIERO', 105, y + 5, { align: 'center' });
+  y += 12;
   
-  doc.setFontSize(22);
-  doc.setTextColor(primaryColor);
-  doc.text(`$${pdfFormatMoney(data.amount)}`, 180, 155, { align: 'right' });
+  const financialRows = [
+    { l: "SALDO ANTERIOR", v: data.totalExpenses * 1.1 },
+    { l: "Ingresos por pago de Expensas Ordinarias", v: data.totalExpenses * 0.9 },
+    { l: "Egresos por GASTOS (-)", v: data.totalExpenses },
+    { l: "SALDO CAJA AL CIERRE", v: data.totalExpenses * 1.05 }
+  ];
 
-  doc.addImage(qrDataUrl, 'PNG', 145, 195, 45, 45);
+  financialRows.forEach(row => {
+    doc.setFont('helvetica', row.l.includes('SALDO') ? 'bold' : 'normal');
+    doc.text(row.l, margin + 5, y);
+    doc.text(`$ ${formatArCurrency(row.v)}`, pageWidth - margin - 5, y, { align: 'right' });
+    doc.line(margin + 5, y + 1, pageWidth - margin - 5, y + 1);
+    y += 7;
+  });
+
+  // --- PLANILLA DE PRORRATEO (LANDSCAPE) ---
+  doc.addPage('a4', 'landscape');
+  y = 15;
+  doc.setFillColor(189, 215, 238);
+  doc.rect(10, y, 277, 8, 'F');
+  doc.setFontSize(10);
+  doc.text('ESTADO DE CUENTAS Y PRORRATEO', 148, y + 5.5, { align: 'center' });
+  y += 12;
+
+  const headers = ["UF", "PISO", "DTO", "PROPIETARIO", "S. ANT", "PAGO", "DEUDA", "INT 3%", "UF%", "ORDIN.", "EXTRA.", "AYSA", "TOTAL"];
+  const colWidths = [8, 12, 10, 50, 22, 22, 22, 15, 12, 22, 22, 15, 25];
   
-  doc.setFontSize(9);
-  doc.setTextColor('#94a3b8');
-  doc.text('Escanee el código QR para verificar la validez', 140, 245, { align: 'right' });
-  doc.text('de este comprobante de forma online.', 140, 250, { align: 'right' });
+  doc.setFontSize(6);
+  let x = 10;
+  headers.forEach((h, i) => {
+    doc.setFillColor(242, 242, 242);
+    doc.rect(x, y, colWidths[i], 6, 'F');
+    doc.rect(x, y, colWidths[i], 6, 'S');
+    doc.text(h, x + (colWidths[i]/2), y + 4, { align: 'center' });
+    x += colWidths[i];
+  });
+  y += 6;
 
-  doc.setFontSize(8);
-  doc.setTextColor('#cbd5e1');
-  doc.text('Este documento es un comprobante de pago válido para el consorcio especificado.', 105, 280, { align: 'center' });
-  doc.text('Documento generado automáticamente por el sistema ConsorcioFlow.', 105, 285, { align: 'center' });
+  data.units.forEach((u: any, idx: number) => {
+    if (y > 185) { doc.addPage('a4', 'landscape'); y = 15; }
+    const ord = data.totalExpenses * u.coefficient;
+    const debt = u.manualDebt || 0;
+    const interest = debt * 0.03;
+    const total = ord + debt + interest;
+    let cx = 10;
+    const row = [(idx+1).toString(), u.floor, u.department, u.owner.substring(0, 25).toUpperCase(), formatArCurrency(u.previousBalance || 0), formatArCurrency(u.currentPayment || 0), formatArCurrency(debt), formatArCurrency(interest), `${(u.coefficient * 100).toFixed(2)}%`, formatArCurrency(ord), "0,00", "0,00", formatArCurrency(total)];
+    row.forEach((val, i) => {
+      doc.rect(cx, y, colWidths[i], 5);
+      doc.text(val, i < 4 ? cx + 1 : cx + colWidths[i] - 1, y + 3.5, { align: i < 4 ? 'left' : 'right' });
+      cx += colWidths[i];
+    });
+    y += 5;
+  });
 
-  doc.save(`Recibo_${data.unit}_${data.date.replace(/\//g, '-')}.pdf`);
+  doc.save(`Liquidacion_${data.month}_${data.year}_Oficial.pdf`);
 };
 
-export const generateSettlementPdf = async (data: SettlementPdfData) => {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
-
-  // Generamos el link al portal público usando la URL actual y parámetros
-  const baseUrl = window.location.origin + window.location.pathname;
-  const publicUrl = `${baseUrl}?v=portal&bid=${data.buildingId}&m=${data.monthIdx}&y=${data.year}`;
-  
-  const qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 1, width: 100 });
-
-  const primaryColor = '#4f46e5'; 
-  const secondaryColor = '#1e293b';
-  const lightGray = '#f8fafc';
-
-  // Encabezado
-  doc.setFillColor(lightGray);
-  doc.rect(0, 0, 210, 45, 'F');
-  
-  doc.setTextColor(primaryColor);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text('ConsorcioFlow', 20, 20);
-  
-  doc.setFontSize(10);
-  doc.setTextColor(secondaryColor);
-  doc.setFont('helvetica', 'normal');
-  doc.text('LIQUIDACIÓN OFICIAL DE EXPENSAS', 20, 28);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(data.buildingName.toUpperCase(), 190, 20, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(data.buildingAddress, 190, 26, { align: 'right' });
-  doc.text(`Período: ${data.month} ${data.year}`, 190, 32, { align: 'right' });
-
-  // Resumen Financiero
-  doc.setDrawColor(primaryColor);
-  doc.setLineWidth(0.5);
-  doc.line(20, 50, 190, 50);
-
+export const generatePaymentReceipt = async (data: any) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('RESUMEN DE EGRESOS', 20, 60);
-  
-  doc.setFontSize(20);
-  doc.text(`$${pdfFormatMoney(data.totalExpenses)}`, 190, 60, { align: 'right' });
+  doc.text('RECIBO DE PAGO', 105, 20, { align: 'center' });
+  doc.save(`Recibo_${data.unit}.pdf`);
+};
 
-  // Tabla de Gastos
-  let currentY = 70;
-  doc.setFillColor(secondaryColor);
-  doc.rect(20, currentY, 170, 8, 'F');
-  doc.setTextColor('#ffffff');
-  doc.setFontSize(8);
-  doc.text('DESCRIPCIÓN', 25, currentY + 5);
-  doc.text('CATEGORÍA', 105, currentY + 5);
-  doc.text('MONTO', 185, currentY + 5, { align: 'right' });
-
-  currentY += 8;
-  doc.setTextColor(secondaryColor);
-  data.expenses.forEach((exp, i) => {
-    if (currentY > 260) { doc.addPage(); currentY = 20; }
-    if (i % 2 === 0) { doc.setFillColor('#f8fafc'); doc.rect(20, currentY, 170, 7, 'F'); }
-    doc.text(exp.description.substring(0, 55), 25, currentY + 5);
-    doc.text(exp.category.toUpperCase(), 105, currentY + 5);
-    doc.text(`$${pdfFormatMoney(exp.amount)}`, 185, currentY + 5, { align: 'right' });
-    currentY += 7;
-  });
-
-  // Prorrateo por Unidades
-  currentY += 15;
-  if (currentY > 240) { doc.addPage(); currentY = 20; }
-  
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PRORRATEO POR UNIDAD FUNCIONAL', 20, currentY);
-  currentY += 8;
-
-  doc.setFillColor(primaryColor);
-  doc.rect(20, currentY, 170, 8, 'F');
-  doc.setTextColor('#ffffff');
-  doc.setFontSize(8);
-  doc.text('UF', 25, currentY + 5);
-  doc.text('TITULAR', 50, currentY + 5);
-  doc.text('PARTIC.', 120, currentY + 5);
-  doc.text('A PAGAR', 185, currentY + 5, { align: 'right' });
-
-  currentY += 8;
-  doc.setTextColor(secondaryColor);
-  data.units.forEach((u, i) => {
-    if (currentY > 270) { doc.addPage(); currentY = 20; }
-    if (i % 2 === 0) { doc.setFillColor('#f8fafc'); doc.rect(20, currentY, 170, 7, 'F'); }
-    doc.text(`${u.floor}${u.department}`, 25, currentY + 5);
-    doc.text(u.owner.substring(0, 30), 50, currentY + 5);
-    doc.text(`${(u.coefficient * 100).toFixed(2)}%`, 120, currentY + 5);
-    const amount = data.totalExpenses * u.coefficient;
-    doc.text(`$${pdfFormatMoney(amount)}`, 185, currentY + 5, { align: 'right' });
-    currentY += 7;
-  });
-
-  // Footer y QR
-  if (currentY > 230) { doc.addPage(); currentY = 20; }
-  doc.addImage(qrDataUrl, 'PNG', 160, 240, 30, 30);
-  doc.setFontSize(8);
-  doc.setTextColor('#94a3b8');
-  doc.text('Escanee para ver detalle online', 155, 245, { align: 'right' });
-  doc.text('Transparencia ConsorcioFlow', 20, 280);
-
-  doc.save(`Liquidacion_${data.month}_${data.year}_${data.buildingName.replace(/\s/g, '_')}.pdf`);
+export const generateDetailedReceiptPdf = async (data: any) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  doc.save(`Recibo_Detallado.pdf`);
 };

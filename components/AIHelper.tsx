@@ -31,55 +31,55 @@ const AIHelper: React.FC<AIHelperProps> = ({ units, expenses }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-1 space-y-6">
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
             <span className="text-indigo-500">✨</span> Herramientas IA
           </h3>
           <p className="text-slate-500 text-sm mb-6">
             Utiliza la IA para analizar las finanzas del consorcio y mejorar la comunicación con los vecinos.
           </p>
-
+          
           <div className="space-y-4">
-            <button
+            <button 
               onClick={handleAnalysis}
               disabled={loading}
-              className="w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 py-3 rounded-xl font-medium hover:bg-slate-800 dark:hover:bg-white transition-colors disabled:opacity-50"
+              className="w-full bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
               Analizar Presupuesto Mensual
             </button>
-
+            
             <div className="pt-4 border-t border-slate-100">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Redactar Comunicado</label>
-              <textarea
-                className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 min-h-[100px] text-sm"
-                placeholder="Ej: Ascensor roto en piso 3, mantenimiento el próximo martes..."
-                value={topic}
-                onChange={e => setTopic(e.target.value)}
-              />
-              <button
+               <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Redactar Comunicado</label>
+               <textarea 
+                  className="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 min-h-[100px] text-sm"
+                  placeholder="Ej: Ascensor roto en piso 3, mantenimiento el próximo martes..."
+                  value={topic}
+                  onChange={e => setTopic(e.target.value)}
+               />
+               <button 
                 onClick={handleAnnouncement}
                 disabled={loading || !topic}
                 className="w-full mt-3 bg-indigo-600 text-white py-3 rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
-              >
+               >
                 Generar Borrador
-              </button>
+               </button>
             </div>
           </div>
         </div>
 
         <div className="bg-indigo-50 rounded-2xl p-6 border border-indigo-100">
-          <h4 className="font-bold text-indigo-900 text-sm">¿Cómo funciona?</h4>
-          <ul className="mt-3 space-y-2 text-xs text-indigo-700 list-disc list-inside">
-            <li>Analiza patrones de gasto</li>
-            <li>Identifica desvíos en costos de mantenimiento</li>
-            <li>Genera textos profesionales para boletines</li>
-            <li>Sugiere optimizaciones para futuros presupuestos</li>
-          </ul>
+            <h4 className="font-bold text-indigo-900 text-sm">¿Cómo funciona?</h4>
+            <ul className="mt-3 space-y-2 text-xs text-indigo-700 list-disc list-inside">
+                <li>Analiza patrones de gasto</li>
+                <li>Identifica desvíos en costos de mantenimiento</li>
+                <li>Genera textos profesionales para boletines</li>
+                <li>Sugiere optimizaciones para futuros presupuestos</li>
+            </ul>
         </div>
       </div>
 
       <div className="lg:col-span-2">
-        <div className="bg-white dark:bg-slate-900 min-h-[500px] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-8">
+        <div className="bg-white min-h-[500px] rounded-2xl shadow-sm border border-slate-200 p-8">
           {loading ? (
             <div className="h-full flex flex-col items-center justify-center space-y-4">
               <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
@@ -89,7 +89,7 @@ const AIHelper: React.FC<AIHelperProps> = ({ units, expenses }) => {
             <div className="prose prose-slate max-w-none">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-slate-800 m-0">Contenido Generado</h3>
-                <button
+                <button 
                   onClick={() => {
                     navigator.clipboard.writeText(result);
                     alert("¡Copiado al portapapeles!");
@@ -99,7 +99,7 @@ const AIHelper: React.FC<AIHelperProps> = ({ units, expenses }) => {
                   Copiar Texto
                 </button>
               </div>
-              <div className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/50 p-6 rounded-xl border border-slate-100 dark:border-slate-700">
+              <div className="whitespace-pre-wrap text-slate-700 leading-relaxed bg-slate-50 p-6 rounded-xl border border-slate-100">
                 {result}
               </div>
             </div>

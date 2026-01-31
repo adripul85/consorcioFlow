@@ -2,7 +2,8 @@
 import React, { useState, useRef } from 'react';
 import { Building, Expense } from '../types';
 import { extractDataFromInvoice } from '../services/geminiService';
-import { getCategoryIcon, handleAccountingInput, parseAccountingValue, formatMoney } from './Dashboard';
+import { getCategoryIcon } from './Dashboard';
+import { formatMoney, handleAccountingInput, parseAccountingValue } from '../services/accountingUtils';
 
 interface ProviderPortalProps {
   buildings: Building[];
@@ -14,7 +15,7 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
   const [selectedBuildingId, setSelectedBuildingId] = useState('');
   const [step, setStep] = useState(1);
   const [isScanning, setIsScanning] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     description: '',
     amount: '0.00',
@@ -36,8 +37,8 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
       reader.onload = async (event) => {
         const base64Data = (event.target?.result as string).split(',')[1];
         const result = await extractDataFromInvoice(
-          base64Data, 
-          file.type, 
+          base64Data,
+          file.type,
           activeBuilding.categories
         );
 
@@ -63,7 +64,7 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = parseAccountingValue(formData.amount);
-    
+
     if (!selectedBuildingId || amountNum <= 0) return;
 
     onAddExpense(selectedBuildingId, {
@@ -71,7 +72,7 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
       ...formData,
       amount: amountNum,
       paid: false,
-      status: 'pending' 
+      status: 'pending'
     });
 
     setSubmitted(true);
@@ -102,26 +103,26 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
         <form onSubmit={handleSubmit} className="p-10 space-y-8">
           {step === 1 && (
             <div className="space-y-6 animate-in slide-in-from-right-4">
-               <div className="space-y-2">
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Seleccionar Consorcio Destino</label>
-                 <select 
-                   className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 transition-all"
-                   value={selectedBuildingId}
-                   onChange={e => setSelectedBuildingId(e.target.value)}
-                   required
-                 >
-                   <option value="">-- ¿A qué edificio factura? --</option>
-                   {buildings.map(b => <option key={b.id} value={b.id}>{b.name} ({b.address})</option>)}
-                 </select>
-               </div>
-               <button 
-                type="button" 
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Seleccionar Consorcio Destino</label>
+                <select
+                  className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 transition-all"
+                  value={selectedBuildingId}
+                  onChange={e => setSelectedBuildingId(e.target.value)}
+                  required
+                >
+                  <option value="">-- ¿A qué edificio factura? --</option>
+                  {buildings.map(b => <option key={b.id} value={b.id}>{b.name} ({b.address})</option>)}
+                </select>
+              </div>
+              <button
+                type="button"
                 disabled={!selectedBuildingId}
                 onClick={() => setStep(2)}
                 className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl disabled:opacity-50 transition-all active:scale-95"
-               >
+              >
                 Siguiente Paso →
-               </button>
+              </button>
             </div>
           )}
 
@@ -142,7 +143,7 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
 
               {/* Botón de Escaneo IA */}
               <div className="relative">
-                <button 
+                <button
                   type="button"
                   disabled={isScanning}
                   onClick={() => fileInputRef.current?.click()}
@@ -151,7 +152,7 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
                   {isScanning ? (
                     <>
                       <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                      <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.3em] animate-pulse">Gemini Escaneando Factura...</p>
+                      <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.3em] animate-pulse">Gemini 1.5 Pro Escaneando Factura...</p>
                     </>
                   ) : (
                     <>
@@ -163,15 +164,15 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
                     </>
                   )}
                 </button>
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange} 
-                  className="hidden" 
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  className="hidden"
                   accept="image/*,application/pdf"
                   capture="environment"
                 />
-                
+
                 {isScanning && (
                   <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-[2rem]">
                     <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.8)] animate-scan-line"></div>
@@ -182,35 +183,35 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Concepto / Servicio Prestado</label>
-                  <input type="text" className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none focus:border-indigo-500 transition-all" placeholder="Ej: Reparación bomba de agua PB" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required />
+                  <input type="text" className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none focus:border-indigo-500 transition-all" placeholder="Ej: Reparación bomba de agua PB" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} required />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Monto de Factura ($)</label>
-                  <input type="text" className="w-full px-5 py-4 rounded-2xl border-2 border-indigo-100 bg-indigo-50/20 dark:bg-slate-950 font-black text-lg text-indigo-600 outline-none focus:border-indigo-500 text-right tabular-nums transition-all" value={formData.amount} onChange={e => setFormData({...formData, amount: handleAccountingInput(e.target.value)})} required />
+                  <input type="text" className="w-full px-5 py-4 rounded-2xl border-2 border-indigo-100 bg-indigo-50/20 dark:bg-slate-950 font-black text-lg text-indigo-600 outline-none focus:border-indigo-500 text-right tabular-nums transition-all" value={formData.amount} onChange={e => setFormData({ ...formData, amount: handleAccountingInput(e.target.value) })} required />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
-                  <select className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none transition-all" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                  <select className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none transition-all" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
                     {activeBuilding?.categories.map(c => <option key={c} value={c}>{getCategoryIcon(c)} {c.toUpperCase()}</option>)}
                   </select>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha del Comprobante</label>
-                  <input type="date" className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none transition-all" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+                  <input type="date" className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none transition-all" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} required />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Notas / Observaciones</label>
-                  <input type="text" className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none transition-all" placeholder="Opcional..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
+                  <input type="text" className="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 font-bold text-sm outline-none transition-all" placeholder="Opcional..." value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
                 </div>
               </div>
 
               <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={isScanning}
                   className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black shadow-2xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-widest text-xs disabled:opacity-50"
                 >
@@ -221,7 +222,7 @@ const ProviderPortal: React.FC<ProviderPortalProps> = ({ buildings, onAddExpense
           )}
         </form>
       </div>
-      
+
       <style>{`
         @keyframes scan-line {
           0% { top: 0; }

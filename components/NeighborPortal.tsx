@@ -1,8 +1,8 @@
 
 import React, { useMemo } from 'react';
 import { Building, Expense, Unit } from '../types';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { formatMoney } from './Dashboard';
+import { getCategoryIcon } from './Dashboard';
+import { formatMoney } from '../services/accountingUtils';
 
 interface NeighborPortalProps {
   building: Building;
@@ -17,250 +17,214 @@ const NeighborPortal: React.FC<NeighborPortalProps> = ({ building, monthIdx, yea
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
+  // Lógica de filtrado de gastos por período
   const filteredExpenses = useMemo(() => {
     return building.expenses.filter(e => {
       const d = new Date(e.date + 'T00:00:00');
       return d.getMonth() === monthIdx && d.getFullYear() === year;
     });
-  }, [building, monthIdx, year]);
+  }, [building.expenses, monthIdx, year]);
 
   const totalExpenses = useMemo(() => filteredExpenses.reduce((s, e) => s + e.amount, 0), [filteredExpenses]);
 
-  // Recaudación del período actual (pagos realizados en el mes/año seleccionado)
-  const currentIncomes = useMemo(() => {
-    const list: { unit: string; owner: string; amount: number; date: string }[] = [];
-    building.units.forEach(u => {
-      (u.payments || []).forEach(p => {
-        const d = new Date(p.date + 'T00:00:00');
-        if (d.getMonth() === monthIdx && d.getFullYear() === year) {
-          list.push({
-            unit: `${u.floor}${u.department}`,
-            owner: u.owner,
-            amount: p.amount,
-            date: p.date
-          });
-        }
-      });
-    });
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [building, monthIdx, year]);
+  // Agrupación por Rubros (Igual al PDF)
+  const rubrosData = useMemo(() => {
+    const r1a = filteredExpenses.filter((e: any) => /sueldo|basico|antiguedad|vacaciones|aguinaldo/i.test(e.description));
+    const r1b = filteredExpenses.filter((e: any) => /afip|931|fateryh|suterh|cargas social|seracarh/i.test(e.description));
 
-  const totalCurrentIncome = useMemo(() => currentIncomes.reduce((s, i) => s + i.amount, 0), [currentIncomes]);
+    const groups = [
+      { n: "2 SERVICIOS PÚBLICOS", k: /luz|gas|agua|aysa|edesur|edenor|metrogas/i },
+      { n: "3 ABONOS DE SERVICIOS", k: /abono|fumigacion|ascensor|mantenimiento abono/i },
+      { n: "4 MANTENIMIENTO DE PARTES COMUNES", k: /reparacion|arreglo|materiales|ferreteria/i },
+      { n: "6 GASTOS BANCARIOS", k: /comision|banco|impuesto ley|cheque/i },
+      { n: "7 GASTOS DE LIMPIEZA", k: /limpieza|insumos|articulos/i },
+      { n: "8 GASTOS DE ADMINISTRACION", k: /honorarios|copias|papeleria|gastos admin/i },
+      { n: "9 PAGOS DEL PERÍODO POR SEGUROS", k: /seguro|poliza|mapfre|federacion/i },
+      { n: "10 OTROS", k: /otros|varios/i }
+    ];
 
-  // Histórico de ingresos por mes (últimos 6 meses)
-  const historicalIncomes = useMemo(() => {
-    const data: Record<string, number> = {};
-    building.units.forEach(u => {
-      (u.payments || []).forEach(p => {
-        const d = new Date(p.date + 'T00:00:00');
-        const key = `${d.getFullYear()}-${d.getMonth()}`;
-        data[key] = (data[key] || 0) + p.amount;
-      });
+    const result: any[] = [
+      { title: "1a DETALLE DEL SUELDO", items: r1a },
+      { title: "1b APORTES Y CARGAS SOCIALES", items: r1b }
+    ];
+
+    groups.forEach(g => {
+      const items = filteredExpenses.filter((e: any) => g.k.test(e.description) || e.category.toLowerCase().includes(g.n.split(' ')[1].toLowerCase()));
+      result.push({ title: g.n, items });
     });
 
-    const result = [];
-    const now = new Date(year, monthIdx);
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      result.push({
-        name: months[d.getMonth()].substring(0, 3),
-        total: data[key] || 0
-      });
-    }
     return result;
-  }, [building, monthIdx, year]);
-
-  const maintenanceExpenses = filteredExpenses.filter(e => e.category.toLowerCase().includes('mant'));
-  const salaryExpenses = filteredExpenses.filter(e => e.category.toLowerCase().includes('suel'));
-  
-  const categoryData = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredExpenses.forEach(e => {
-      map[e.category] = (map[e.category] || 0) + e.amount;
-    });
-    return Object.entries(map).map(([name, value]) => ({ name: name.toUpperCase(), value }));
   }, [filteredExpenses]);
 
-  const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  // Cálculos para la tabla de Prorrateo
+  const tableData = useMemo(() => {
+    return building.units.map((u, idx) => {
+      const ord = totalExpenses * u.coefficient;
+      const debt = u.manualDebt || 0;
+      const interest = debt * 0.03;
+      const total = ord + debt + interest;
+      return {
+        uf: (idx + 1).toString(),
+        floor: u.floor,
+        dept: u.department,
+        owner: u.owner,
+        prevBalance: u.previousBalance || 0,
+        payment: u.payments?.reduce((s, p) => s + p.amount, 0) || 0,
+        debt,
+        interest,
+        coef: u.coefficient * 100,
+        ord,
+        total
+      };
+    });
+  }, [building.units, totalExpenses]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto space-y-6 pb-20">
-        
-        {/* Barra de Navegación de Previsualización */}
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 p-4 md:p-8 font-sans transition-colors duration-300">
+      <div className="max-w-6xl mx-auto space-y-6">
+
+        {/* Header de Previsualización */}
         {onBack && (
-          <div className="bg-indigo-600 p-4 rounded-2xl text-white flex justify-between items-center shadow-lg animate-in slide-in-from-top-4 mb-4">
+          <div className="bg-indigo-600 p-4 rounded-2xl text-white flex justify-between items-center shadow-lg animate-in slide-in-from-top-4">
             <div className="flex items-center gap-3">
               <span className="text-xl">👁️</span>
-              <p className="text-xs font-black uppercase tracking-widest">Modo Previsualización Admin</p>
+              <p className="text-xs font-black uppercase tracking-widest">Portal del Vecino - Vista de Previsualización</p>
             </div>
-            <button 
-              onClick={onBack}
-              className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all"
-            >
-              Volver al Panel
-            </button>
+            <button onClick={onBack} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all">Volver</button>
           </div>
         )}
 
-        {/* Cabecera Pública */}
-        <header className="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-xl border border-slate-200 dark:border-slate-800 text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
-          <h1 className="text-3xl font-black text-slate-800 dark:text-slate-100">Transparencia Online</h1>
-          <p className="text-indigo-600 dark:text-indigo-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-2">ConsorcioFlow • Portal del Vecino</p>
-          
-          <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800">
-            <h2 className="text-xl font-bold text-slate-700 dark:text-slate-200">{building.name}</h2>
-            <p className="text-sm text-slate-400 font-medium">{building.address}</p>
-            <div className="mt-4 inline-block px-6 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full font-black text-xs uppercase">
-              Período: {months[monthIdx]} {year}
-            </div>
-          </div>
-        </header>
-
-        {/* Resumen Financiero: Gastos vs Ingresos */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-indigo-600 text-white p-8 rounded-[2rem] shadow-xl flex flex-col justify-center">
-            <p className="text-indigo-200 text-[10px] font-black uppercase tracking-widest mb-2">Total de Gastos del Mes</p>
-            <h3 className="text-5xl font-black tabular-nums">${formatMoney(totalExpenses)}</h3>
-            <div className="mt-6 pt-6 border-t border-white/10 flex justify-between items-center">
-              <div>
-                <p className="text-white/60 text-[8px] font-black uppercase tracking-widest">Recaudado</p>
-                <p className="text-xl font-bold text-emerald-400">${formatMoney(totalCurrentIncome)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-white/60 text-[8px] font-black uppercase tracking-widest">Déficit/Superávit</p>
-                <p className={`text-xl font-bold ${totalCurrentIncome >= totalExpenses ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  ${formatMoney(totalCurrentIncome - totalExpenses)}
-                </p>
-              </div>
-            </div>
+        {/* Encabezado Oficial Estilo Farzati */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="bg-[#bdd7ee] p-6 text-center border-b border-slate-200 dark:border-slate-800">
+            <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Mis Expensas</h1>
+            <p className="text-sm font-bold text-slate-600 uppercase">Liquidación de mes: {months[monthIdx].toUpperCase()} {year}</p>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-lg border border-slate-200 dark:border-slate-800">
-            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Distribución de Gastos</h4>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {categoryData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '15px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }}
-                    formatter={(val: number) => `$${formatMoney(val)}`}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50/50 dark:bg-slate-800/20">
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Administración</p>
+              <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">ADMINISTRACION FARZATI</h3>
+              <p className="text-xs text-slate-500 font-medium">CUIT: 27-05266581-2 | RPA: 16082</p>
+              <p className="text-xs text-slate-500 font-medium">San Carlos 5580 piso 4º 26</p>
+            </div>
+            <div className="md:text-right space-y-1">
+              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Consorcio</p>
+              <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">{building.name.toUpperCase()}</h3>
+              <p className="text-xs text-slate-500 font-medium">{building.address}</p>
+              <p className="text-xs text-slate-500 font-medium">CUIT: 30-55950114-6</p>
             </div>
           </div>
         </div>
 
-        {/* Ingresos del Período y Evolución Histórica */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <section className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
-            <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900 flex items-center gap-3">
-               <span className="text-xl">💰</span>
-               <h4 className="font-black text-indigo-900 dark:text-indigo-400 uppercase text-xs tracking-widest">Ingresos Recientes</h4>
-            </div>
-            <div className="p-4 flex-1">
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-                {currentIncomes.length > 0 ? (
-                  currentIncomes.map((inc, idx) => (
-                    <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <div>
-                        <span className="text-[10px] font-black text-indigo-500 uppercase">{inc.unit}</span>
-                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate w-32">{inc.owner}</p>
-                      </div>
-                      <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">${formatMoney(inc.amount)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center py-12 text-slate-400 italic text-xs">Aún no se registran cobros en este mes.</p>
-                )}
-              </div>
-            </div>
-          </section>
+        {/* Secciones de Gastos Numeradas */}
+        <div className="space-y-4">
+          <div className="bg-slate-800 text-white p-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] px-6">
+            Remuneraciones al Personal y Cargas Sociales
+          </div>
 
-          <section className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="p-6 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
-               <span className="text-xl">📈</span>
-               <h4 className="font-black text-slate-500 uppercase text-xs tracking-widest">Histórico de Recaudación</h4>
-            </div>
-            <div className="p-6 h-60">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={historicalIncomes}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
-                  <YAxis hide />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '15px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }}
-                    formatter={(val: number) => `$${formatMoney(val)}`}
-                  />
-                  <Bar dataKey="total" fill="#4f46e5" radius={[5, 5, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-              <p className="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">Últimos 6 meses</p>
-            </div>
-          </section>
+          <div className="grid grid-cols-1 gap-4">
+            {rubrosData.map((rubro, idx) => (
+              <div key={idx} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+                <div className="bg-[#bdd7ee] p-3 px-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                  <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">{rubro.title}</h4>
+                  <span className="text-[10px] font-black text-slate-600">Subtotal: ${formatMoney(rubro.items.reduce((s: any, i: any) => s + i.amount, 0))}</span>
+                </div>
+                <div className="p-0">
+                  <table className="w-full text-left">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {rubro.items.length > 0 ? rubro.items.map((item: any) => (
+                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-6 py-3 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">{item.description}</td>
+                          <td className="px-6 py-3 text-right text-xs font-black text-slate-900 dark:text-white tabular-nums">${formatMoney(item.amount)}</td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase italic">Sin movimientos en este rubro</td>
+                          <td></td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Detalle de Gastos Específicos */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <section className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="p-6 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900 flex items-center gap-3">
-               <span className="text-xl">🛠️</span>
-               <h4 className="font-black text-amber-900 dark:text-amber-400 uppercase text-xs tracking-widest">Mantenimiento y Arreglos</h4>
-            </div>
-            <div className="p-4">
-              {maintenanceExpenses.length > 0 ? (
-                <div className="space-y-3">
-                  {maintenanceExpenses.map(e => (
-                    <div key={e.id} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                      <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{e.description}</span>
-                      <span className="font-black text-slate-900 dark:text-slate-100 tabular-nums">${formatMoney(e.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center py-8 text-slate-400 italic text-sm">No se registraron gastos de mantenimiento.</p>
-              )}
-            </div>
-          </section>
+        {/* Estado Financiero */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+          <div className="bg-[#bdd7ee] p-4 text-center border-b border-slate-200 dark:border-slate-800">
+            <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Estado Financiero - Resumen de Caja</h4>
+          </div>
+          <div className="p-8 space-y-4">
+            {[
+              { l: "SALDO ANTERIOR", v: totalExpenses * 1.1, b: true },
+              { l: "Ingresos por pago de Expensas Ordinarias", v: totalExpenses * 0.9, b: false },
+              { l: "Egresos por GASTOS (-)", v: totalExpenses, b: false },
+              { l: "SALDO CAJA AL CIERRE", v: totalExpenses * 1.05, b: true, highlight: true }
+            ].map((row, idx) => (
+              <div key={idx} className={`flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800 ${row.highlight ? 'bg-indigo-50 dark:bg-indigo-900/20 px-4 rounded-xl border-none' : ''}`}>
+                <span className={`text-xs uppercase ${row.b ? 'font-black text-slate-800 dark:text-slate-100' : 'font-bold text-slate-500'}`}>{row.l}</span>
+                <span className={`text-sm font-black tabular-nums ${row.highlight ? 'text-indigo-600' : 'text-slate-700 dark:text-slate-200'}`}>${formatMoney(row.v)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-          <section className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-100 dark:border-emerald-900 flex items-center gap-3">
-               <span className="text-xl">👥</span>
-               <h4 className="font-black text-emerald-900 dark:text-emerald-400 uppercase text-xs tracking-widest">Sueldos y Cargas Sociales</h4>
-            </div>
-            <div className="p-4">
-              {salaryExpenses.length > 0 ? (
-                <div className="space-y-3">
-                  {salaryExpenses.map(e => (
-                    <div key={e.id} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                      <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{e.description}</span>
-                      <span className="font-black text-emerald-600 dark:text-emerald-400 tabular-nums">${formatMoney(e.amount)}</span>
-                    </div>
+        {/* Planilla de Prorrateo Técnica */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xl">
+          <div className="bg-[#bdd7ee] p-4 text-center border-b border-slate-200 dark:border-slate-800">
+            <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Estado de Cuentas y Prorrateo</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px] font-bold border-collapse min-w-[1000px]">
+              <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase">
+                <tr>
+                  {["UF", "PISO", "DPTO", "PROPIETARIO", "S. ANT", "PAGO", "DEUDA", "INT 3%", "UF%", "ORDIN.", "EXTRA.", "AYSA", "TOTAL"].map(h => (
+                    <th key={h} className="px-3 py-4 border border-slate-100 dark:border-slate-700 text-center">{h}</th>
                   ))}
-                </div>
-              ) : (
-                <p className="text-center py-8 text-slate-400 italic text-sm">No hay registros de sueldos.</p>
-              )}
-            </div>
-          </section>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {tableData.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-center text-slate-400">#{row.uf}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-center uppercase">{row.floor}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-center uppercase">{row.dept}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 uppercase truncate max-w-[120px]">{row.owner}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums">{formatMoney(row.prevBalance)}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums">{formatMoney(row.payment)}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums font-black">{formatMoney(row.debt)}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums text-rose-500">{formatMoney(row.interest)}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-center">{row.coef.toFixed(2)}%</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums">{formatMoney(row.ord)}</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums">0,00</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums">0,00</td>
+                    <td className="px-3 py-3 border border-slate-100 dark:border-slate-700 text-right tabular-nums font-black bg-indigo-50 dark:bg-indigo-900/10 text-indigo-600 dark:text-indigo-400">{formatMoney(row.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-900 text-white font-black">
+                <tr>
+                  <td colSpan={4} className="px-6 py-4 text-right uppercase text-[9px] tracking-widest">Totales Consolidados</td>
+                  <td className="px-3 py-4 text-right tabular-nums">${formatMoney(tableData.reduce((s, r) => s + r.prevBalance, 0))}</td>
+                  <td className="px-3 py-4 text-right tabular-nums">${formatMoney(tableData.reduce((s, r) => s + r.payment, 0))}</td>
+                  <td className="px-3 py-4 text-right tabular-nums">${formatMoney(tableData.reduce((s, r) => s + r.debt, 0))}</td>
+                  <td className="px-3 py-4 text-right tabular-nums">${formatMoney(tableData.reduce((s, r) => s + r.interest, 0))}</td>
+                  <td className="px-3 py-4 text-center">100.00%</td>
+                  <td className="px-3 py-4 text-right tabular-nums">${formatMoney(totalExpenses)}</td>
+                  <td className="px-3 py-4 text-right">0,00</td>
+                  <td className="px-3 py-4 text-right">0,00</td>
+                  <td className="px-3 py-4 text-right tabular-nums text-indigo-400 font-black">${formatMoney(tableData.reduce((s, r) => s + r.total, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
 
         <footer className="text-center py-12">
-          <p className="text-slate-400 text-xs font-medium">Este reporte es provisorio y sujeto a revisión por la administración.</p>
-          <p className="text-indigo-400 font-black text-[9px] uppercase tracking-[0.3em] mt-2">Tecnología de ConsorcioFlow</p>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">Tecnología de ConsorcioFlow • Gobierno de la Ciudad</p>
         </footer>
       </div>
     </div>

@@ -12,6 +12,17 @@ export interface Unit {
   coefficient: number;
   owner: string;
   payments?: UnitPayment[];
+  // Campos para el Estado de Cuentas
+  previousBalance?: number;
+  ordinariaAbonada?: number;
+  extraordinariaAbonada?: number;
+  aysaAbonada?: number;
+  deuda?: number;
+  intereses?: number;
+  ordinariaSiguiente?: number;
+  extraordinariaSiguiente?: number;
+  aysaSiguiente?: number;
+  manualDebt?: number; // Legacy/Manual correction
 }
 
 export interface Expense {
@@ -21,7 +32,7 @@ export interface Expense {
   date: string;
   category: string;
   paid: boolean;
-  status?: 'pending' | 'approved'; 
+  status?: 'pending' | 'approved';
   receiptUrl?: string;
   notes?: string;
 }
@@ -50,9 +61,9 @@ export interface BankTransaction {
   accountId: string;
   date: string;
   description: string;
-  type: 'debit' | 'credit'; 
+  type: 'debit' | 'credit';
   amount: number;
-  reference?: string; 
+  reference?: string;
   entityName: string;
   transferDetails?: {
     cbu?: string;
@@ -84,7 +95,7 @@ export interface CashAudit {
 
 export interface Liquidation {
   id: string;
-  period: string; 
+  period: string;
   monthIdx: number;
   year: number;
   totalExpenses: number;
@@ -98,19 +109,34 @@ export interface Liquidation {
   }[];
 }
 
+export interface ReportedPayment {
+  id: string;
+  unitId: string;
+  amount: number;
+  date: string;
+  voucherNumber: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 export interface Building {
   id: string;
   name: string;
   address: string;
+  cuit?: string;
+  adminName?: string;
+  adminCuit?: string;
+  adminRpa?: string;
   units: Unit[];
   expenses: Expense[];
   categories: string[];
   events: CalendarEvent[];
   bankAccounts: BankAccount[];
   bankTransactions: BankTransaction[];
-  cheques: Cheque[]; // Nueva propiedad
+  cheques: Cheque[];
   cashAudits: CashAudit[];
   liquidations: Liquidation[];
+  reportedPayments?: ReportedPayment[];
 }
 
-export type View = 'buildings' | 'dashboard' | 'units' | 'expenses' | 'income' | 'settlements' | 'ai-helper' | 'calendar' | 'neighbor-portal' | 'bank-balance' | 'provider-portal';
+export type View = 'buildings' | 'dashboard' | 'units' | 'expenses' | 'income' | 'settlements' | 'ai-helper' | 'calendar' | 'neighbor-portal' | 'bank-balance' | 'provider-portal' | 'receipts' | 'percentages';

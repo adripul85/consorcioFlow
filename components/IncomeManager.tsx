@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Unit, UnitPayment } from '../types';
 import { getIncomeAnalysis } from '../services/geminiService';
 import { generatePaymentReceipt } from '../services/pdfService';
-import { formatMoney, handleAccountingInput, parseAccountingValue } from './Dashboard';
+import { formatMoney, handleAccountingInput, parseAccountingValue } from '../services/accountingUtils';
 
 interface IncomeManagerProps {
   units: Unit[];
@@ -16,13 +16,13 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
   const [isAdding, setIsAdding] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [originalUnitId, setOriginalUnitId] = useState<string | null>(null);
-  
+
   const [selectedUnitId, setSelectedUnitId] = useState('');
   const [amount, setAmount] = useState('0.00');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterText, setFilterText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  
+
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isPdfLoading, setIsPdfLoading] = useState<string | null>(null);
@@ -33,12 +33,12 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
     const payments: (UnitPayment & { unitId: string; floor: string; department: string; owner: string })[] = [];
     units.forEach(unit => {
       (unit.payments || []).forEach(p => {
-        payments.push({ 
-          ...p, 
-          unitId: unit.id, 
-          floor: unit.floor, 
-          department: unit.department, 
-          owner: unit.owner 
+        payments.push({
+          ...p,
+          unitId: unit.id,
+          floor: unit.floor,
+          department: unit.department,
+          owner: unit.owner
         });
       });
     });
@@ -47,12 +47,12 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
 
   const stats = useMemo(() => {
     const total = allPayments.reduce((sum, p) => sum + p.amount, 0);
-    
+
     // Comparativa Mensual
     const now = new Date();
     const curMonth = now.getMonth();
     const curYear = now.getFullYear();
-    
+
     const prevDate = new Date(curYear, curMonth - 1, 1);
     const prevMonth = prevDate.getMonth();
     const prevYear = prevDate.getFullYear();
@@ -74,8 +74,8 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
     const diff = currentMonthTotal - prevMonthTotal;
     const percentChange = prevMonthTotal > 0 ? (diff / prevMonthTotal) * 100 : (currentMonthTotal > 0 ? 100 : 0);
 
-    return { 
-      total, 
+    return {
+      total,
       count: allPayments.length,
       currentMonthTotal,
       prevMonthTotal,
@@ -110,11 +110,11 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
   const handleSavePayment = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
+
     const numAmount = parseAccountingValue(amount);
-    if (!selectedUnitId || numAmount <= 0) { 
-      setError('Error: El monto debe ser positivo y debe seleccionar una unidad.'); 
-      return; 
+    if (!selectedUnitId || numAmount <= 0) {
+      setError('Error: El monto debe ser positivo y debe seleccionar una unidad.');
+      return;
     }
 
     const unit = units.find(u => u.id === selectedUnitId);
@@ -124,28 +124,28 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
       if (originalUnitId === selectedUnitId) {
         onUpdateUnit({
           ...unit,
-          payments: (unit.payments || []).map(p => 
+          payments: (unit.payments || []).map(p =>
             p.id === editingPaymentId ? { ...p, amount: numAmount, date } : p
           )
         });
       } else {
         const oldUnit = units.find(u => u.id === originalUnitId);
         if (oldUnit) {
-          onUpdateUnit({ 
-            ...oldUnit, 
-            payments: (oldUnit.payments || []).filter(p => p.id !== editingPaymentId) 
+          onUpdateUnit({
+            ...oldUnit,
+            payments: (oldUnit.payments || []).filter(p => p.id !== editingPaymentId)
           });
         }
-        onUpdateUnit({ 
-          ...unit, 
-          payments: [...(unit.payments || []), { id: editingPaymentId, amount: numAmount, date }] 
+        onUpdateUnit({
+          ...unit,
+          payments: [...(unit.payments || []), { id: editingPaymentId, amount: numAmount, date }]
         });
       }
     } else {
-      const newPayment = { 
-        id: Math.random().toString(36).substr(2, 9), 
-        amount: numAmount, 
-        date 
+      const newPayment = {
+        id: Math.random().toString(36).substr(2, 9),
+        amount: numAmount,
+        date
       };
       onUpdateUnit({ ...unit, payments: [...(unit.payments || []), newPayment] });
     }
@@ -163,23 +163,23 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
     setIsPdfLoading(payment.id);
     try {
       await generatePaymentReceipt({
-        buildingName, 
-        buildingAddress, 
+        buildingName,
+        buildingAddress,
         paymentId: payment.id,
         date: payment.date.split('-').reverse().join('/'),
-        amount: payment.amount, 
-        owner: payment.owner, 
+        amount: payment.amount,
+        owner: payment.owner,
         unit: `${payment.floor}${payment.department}`
       });
-    } catch { 
-      alert("Error al generar PDF."); 
+    } catch {
+      alert("Error al generar PDF.");
     }
     setIsPdfLoading(null);
   };
 
   const filteredPayments = useMemo(() => {
-    return allPayments.filter(p => 
-      p.owner.toLowerCase().includes(filterText.toLowerCase()) || 
+    return allPayments.filter(p =>
+      p.owner.toLowerCase().includes(filterText.toLowerCase()) ||
       `${p.floor}${p.department}`.toLowerCase().includes(filterText.toLowerCase())
     );
   }, [allPayments, filterText]);
@@ -189,20 +189,20 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
       {/* Header Consolidated Balance */}
       <div className="bg-slate-900 rounded-[2rem] p-10 text-white shadow-2xl relative overflow-hidden group">
         <div className="absolute top-0 right-0 p-12 opacity-10 group-hover:scale-110 transition-transform duration-700">
-           <svg className="w-48 h-48" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
+          <svg className="w-48 h-48" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
         </div>
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-end md:items-center gap-6">
           <div>
             <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-2 block">Recaudación Histórica</span>
             <h3 className="text-6xl font-black tabular-nums">${formatMoney(stats.total)}</h3>
             <div className="flex items-center gap-2 mt-2 text-slate-400 font-bold text-sm">
-               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-               {stats.count} ingresos totales procesados
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              {stats.count} ingresos totales procesados
             </div>
           </div>
           <div className="bg-white/10 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 text-right">
-             <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest">Último Movimiento</p>
-             <p className="text-lg font-bold">{allPayments[0]?.date.split('-').reverse().join('/') || '--/--/----'}</p>
+            <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest">Último Movimiento</p>
+            <p className="text-lg font-bold">{allPayments[0]?.date.split('-').reverse().join('/') || '--/--/----'}</p>
           </div>
         </div>
       </div>
@@ -243,21 +243,21 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
             </h3>
             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-1">Bitácora oficial de cobros realizados a copropietarios</p>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             <div className="relative flex-1 md:w-64">
-               <input 
-                  type="text" 
-                  placeholder="Buscar por UF o titular..." 
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                  value={filterText}
-                  onChange={e => setFilterText(e.target.value)}
-               />
-               <svg className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input
+                type="text"
+                placeholder="Buscar por UF o titular..."
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={filterText}
+                onChange={e => setFilterText(e.target.value)}
+              />
+              <svg className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
-            
-            <button 
-              onClick={() => { if (isAdding) resetForm(); else setIsAdding(true); }} 
+
+            <button
+              onClick={() => { if (isAdding) resetForm(); else setIsAdding(true); }}
               className={`${isAdding ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300' : 'bg-emerald-600 text-white shadow-xl shadow-emerald-100 dark:shadow-none hover:bg-emerald-700'} px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95`}
             >
               {isAdding ? 'Cerrar Registro' : '+ Registrar Cobro'}
@@ -267,58 +267,58 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
 
         {isAdding && (
           <div className="p-10 bg-emerald-50/30 dark:bg-emerald-900/10 border-b border-emerald-100 dark:border-emerald-900 animate-in slide-in-from-top-4">
-             <div className="mb-6 flex items-center gap-3">
-               <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black">💰</div>
-               <h4 className="text-xs font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-widest">
-                 {editingPaymentId ? 'Edición de Cobro Existente' : 'Alta de Nuevo Ingreso a Caja'}
-               </h4>
-             </div>
-             {error && <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-xs font-bold rounded-xl animate-bounce-short border-l-4 border-red-500">{error}</div>}
-             <form onSubmit={handleSavePayment} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unidad Funcional</label>
-                  <select 
-                    className="w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer" 
-                    value={selectedUnitId} 
-                    onChange={e => setSelectedUnitId(e.target.value)} 
-                    required
-                  >
-                    <option value="">Seleccionar Unidad...</option>
-                    {units.map(u => <option key={u.id} value={u.id}>{u.floor}{u.department} - {u.owner}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Importe Cobrado ($)</label>
-                  <input 
-                    type="text" 
-                    className="w-full px-4 py-3.5 rounded-xl border-2 border-emerald-100 dark:border-emerald-900/40 bg-white dark:bg-slate-800 font-black text-sm text-emerald-600 dark:text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-right tabular-nums" 
-                    placeholder="0.00" 
-                    value={amount} 
-                    onChange={e => setAmount(handleAccountingInput(e.target.value))} 
-                    required 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha de Recibo</label>
-                  <input 
-                    type="date" 
-                    className="w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 transition-all" 
-                    value={date} 
-                    onChange={e => setDate(e.target.value)} 
-                    required 
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95">
-                    {editingPaymentId ? 'Actualizar' : 'Guardar'}
+            <div className="mb-6 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black">💰</div>
+              <h4 className="text-xs font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-widest">
+                {editingPaymentId ? 'Edición de Cobro Existente' : 'Alta de Nuevo Ingreso a Caja'}
+              </h4>
+            </div>
+            {error && <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-xs font-bold rounded-xl animate-bounce-short border-l-4 border-red-500">{error}</div>}
+            <form onSubmit={handleSavePayment} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unidad Funcional</label>
+                <select
+                  className="w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                  value={selectedUnitId}
+                  onChange={e => setSelectedUnitId(e.target.value)}
+                  required
+                >
+                  <option value="">Seleccionar Unidad...</option>
+                  {units.map(u => <option key={u.id} value={u.id}>{u.floor}{u.department} - {u.owner}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Importe Cobrado ($)</label>
+                <input
+                  type="text"
+                  className="w-full px-4 py-3.5 rounded-xl border-2 border-emerald-100 dark:border-emerald-900/40 bg-white dark:bg-slate-800 font-black text-sm text-emerald-600 dark:text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-right tabular-nums"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={e => setAmount(handleAccountingInput(e.target.value))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha de Recibo</label>
+                <input
+                  type="date"
+                  className="w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95">
+                  {editingPaymentId ? 'Actualizar' : 'Guardar'}
+                </button>
+                {editingPaymentId && (
+                  <button type="button" onClick={resetForm} className="px-4 py-4 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-black text-[10px] uppercase hover:bg-slate-300 transition-colors">
+                    Cancelar
                   </button>
-                  {editingPaymentId && (
-                    <button type="button" onClick={resetForm} className="px-4 py-4 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-black text-[10px] uppercase hover:bg-slate-300 transition-colors">
-                      Cancelar
-                    </button>
-                  )}
-                </div>
-             </form>
+                )}
+              </div>
+            </form>
           </div>
         )}
 
@@ -335,16 +335,16 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredPayments.map((p, idx) => (
-                <tr 
-                  key={p.id} 
+                <tr
+                  key={p.id}
                   className={`group transition-all ${idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/40 dark:bg-slate-800/20'} hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10`}
                 >
                   <td className="px-8 py-6">
                     <div className="flex items-center gap-2">
-                       <span className="text-slate-300 dark:text-slate-600 group-hover:text-indigo-400 transition-colors">📅</span>
-                       <span className="text-sm font-black text-slate-700 dark:text-slate-200 tabular-nums">
+                      <span className="text-slate-300 dark:text-slate-600 group-hover:text-indigo-400 transition-colors">📅</span>
+                      <span className="text-sm font-black text-slate-700 dark:text-slate-200 tabular-nums">
                         {p.date.split('-').reverse().join('/')}
-                       </span>
+                      </span>
                     </div>
                   </td>
                   <td className="px-8 py-6">
@@ -354,8 +354,8 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
                   </td>
                   <td className="px-8 py-6">
                     <div className="flex flex-col">
-                       <span className="text-slate-700 dark:text-slate-200 font-bold">{p.owner}</span>
-                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Liquidación Provisoria</span>
+                      <span className="text-slate-700 dark:text-slate-200 font-bold">{p.owner}</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Liquidación Provisoria</span>
                     </div>
                   </td>
                   <td className="px-8 py-6 text-right">
@@ -368,24 +368,24 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                      <button 
-                        onClick={() => handleDownloadPdf(p)} 
+                      <button
+                        onClick={() => handleDownloadPdf(p)}
                         className="bg-white dark:bg-slate-800 text-slate-400 hover:text-indigo-600 p-2.5 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-indigo-100 transition-all"
                         title="Generar Recibo PDF"
                       >
                         {isPdfLoading === p.id ? (
-                           <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                          <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                         ) : '📄'}
                       </button>
-                      <button 
-                        onClick={() => handleEditClick(p)} 
+                      <button
+                        onClick={() => handleEditClick(p)}
                         className="bg-white dark:bg-slate-800 text-slate-400 hover:text-amber-600 p-2.5 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-amber-100 transition-all"
                         title="Corregir Registro"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                       </button>
-                      <button 
-                        onClick={() => handleDeletePayment(p.unitId, p.id)} 
+                      <button
+                        onClick={() => handleDeletePayment(p.unitId, p.id)}
                         className="bg-white dark:bg-slate-800 text-slate-400 hover:text-red-600 p-2.5 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-red-100 transition-all"
                         title="Eliminar Cobro"
                       >
@@ -399,8 +399,8 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ units, onUpdateUnit, buil
                 <tr>
                   <td colSpan={5} className="px-8 py-32 text-center text-slate-300 dark:text-slate-700">
                     <div className="flex flex-col items-center gap-4 opacity-40 grayscale">
-                       <div className="text-6xl">🗂️</div>
-                       <p className="font-black text-xs uppercase tracking-widest">No se encontraron movimientos</p>
+                      <div className="text-6xl">🗂️</div>
+                      <p className="font-black text-xs uppercase tracking-widest">No se encontraron movimientos</p>
                     </div>
                   </td>
                 </tr>
